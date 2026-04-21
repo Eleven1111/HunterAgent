@@ -1,62 +1,114 @@
 # HuntFlow vNext
 
-HuntFlow vNext is a dual-track headhunter agent workbench:
+HuntFlow is a local-first headhunter agent workbench.
 
-- Mainline product: a thin-core, auditable workbench and chat surface.
-- Experimental sourcing track: buffered raw-source ingestion behind a feature flag.
+This repository is meant to run on a single Mac, especially an older machine, with:
 
-This repository currently includes:
+- no Docker
+- no cloud deployment required
+- `file` storage by default
+- `memory` runtime by default
+- optional web UI
+- direct local use from OpenClaw or Hermes
 
-- `docs/prd-v5.md`: product scope and staged roadmap.
-- `docs/adr-001.md`: architecture decision record.
-- `openapi/openapi.yaml`: shared API contract for the first delivery slice.
-- `apps/api`: FastAPI MVP backend with auth, scoring, draft generation, approvals, audit replay, and experimental source review flow.
-- `apps/web`: Next.js app-router workbench and chat shell.
-- `workers`: placeholder entrypoint for later queue-based jobs.
-- `scripts`: migration, backup, restore, and deploy helpers for the local and release lanes.
+If you are an agent reading this repository from GitHub, start here and follow the commands exactly.
 
-## Current implementation slice
+## Agent Goal
 
-This first implementation focuses on the executable foundation:
+Bring up a local HuntFlow API on the same Mac so the host agent can call it.
 
-- Repo structure and contracts
-- Backend MVP for the mainline closed loop
-- Frontend workbench and chat skeleton
-- CI, Docker, and local verification scaffolding
+Primary success criteria:
 
-The backend now supports:
+1. `http://127.0.0.1:8000/health` responds
+2. `python3 scripts/huntflow_local_cli.py health` succeeds
+3. `python3 scripts/huntflow_local_cli.py today` succeeds
 
-- `memory` for fast local tests
-- `file` for single-node pilot persistence
-- `postgres` plus Redis runtime state for release-oriented deployment
-- server-side auth sessions with `HttpOnly` cookie support for the web workbench
+Do not redefine the task as cloud deployment.
+Do not switch the default path to Docker.
+Do not require Postgres or Redis for the first local install.
 
-## Single old Mac / local agent mode
+## Fastest Path
 
-The primary deployment target for this repo is a single local machine:
-
-- API-first, no Docker required
-- `file` storage so data survives restarts
-- `memory` runtime so Redis is optional
-- optional web workbench
-- OpenClaw / Hermes can call the local API directly
-
-One-time setup:
+From the repo root:
 
 ```bash
 npm run local:setup
 cp .env.local-mac.example .env.local-mac
-```
-
-API only:
-
-```bash
 npm run local:start:api
 python3 scripts/local_login.py --shell
+python3 scripts/huntflow_local_cli.py health
 python3 scripts/huntflow_local_cli.py today
 ```
 
-API + workbench:
+If the API path is healthy and you also need the UI:
+
+```bash
+npm run local:start
+```
+
+To stop local services:
+
+```bash
+npm run local:stop
+```
+
+To install background services with macOS `launchd`:
+
+```bash
+npm run local:launchd:install
+```
+
+To install API + web as background services:
+
+```bash
+npm run local:launchd:install:web
+```
+
+To remove background services:
+
+```bash
+npm run local:launchd:remove
+```
+
+## Required Local Prerequisites
+
+- `python3`
+- `npm`
+
+Optional:
+
+- web browser, if you want the workbench UI
+
+## Default Local Mode
+
+The single-machine defaults live in [/.env.local-mac.example](/Users/na/na/xcode/HunterAgent/.env.local-mac.example).
+
+Key defaults:
+
+- `STORE_BACKEND=file`
+- `STORE_FILE_PATH=storage/local-store.json`
+- `RUNTIME_BACKEND=memory`
+- `ENABLE_EXPERIMENTAL_SOURCING=false`
+- API on `127.0.0.1:8000`
+- Web on `127.0.0.1:3000`
+
+This is the intended first-run mode for old Macs.
+
+## Repo Scripts
+
+Local setup:
+
+```bash
+npm run local:setup
+```
+
+Start API only:
+
+```bash
+npm run local:start:api
+```
+
+Start API + web:
 
 ```bash
 npm run local:start
@@ -68,84 +120,118 @@ Stop local services:
 npm run local:stop
 ```
 
-Install background launchd services on macOS:
+Print shell exports for local auth:
 
 ```bash
-npm run local:launchd:install
+npm run local:token
 ```
 
-Remove them:
+Show bridge CLI help:
 
 ```bash
-npm run local:launchd:remove
+npm run local:bridge
 ```
 
-Detailed local-agent instructions:
+## OpenClaw / Hermes Integration
+
+The recommended integration surface is the local bridge CLI, not ad-hoc `curl`.
+
+Bridge CLI:
+
+[/Users/na/na/xcode/HunterAgent/scripts/huntflow_local_cli.py](/Users/na/na/xcode/HunterAgent/scripts/huntflow_local_cli.py)
+
+Typical commands:
+
+```bash
+python3 scripts/huntflow_local_cli.py health
+python3 scripts/huntflow_local_cli.py dashboard
+python3 scripts/huntflow_local_cli.py today
+python3 scripts/huntflow_local_cli.py create-client --name "Northstar" --industry "Fintech"
+python3 scripts/huntflow_local_cli.py create-job --client-id client_x --title "CFO" --must-have finance
+python3 scripts/huntflow_local_cli.py import-candidate --job-order-id job_x --full-name "Lina Chen" --resume-text "Fintech CFO"
+python3 scripts/huntflow_local_cli.py score job_x candidate_y
+python3 scripts/huntflow_local_cli.py draft job_x candidate_y
+```
+
+Local auth helper:
+
+[/Users/na/na/xcode/HunterAgent/scripts/local_login.py](/Users/na/na/xcode/HunterAgent/scripts/local_login.py)
+
+Token examples:
+
+```bash
+python3 scripts/local_login.py --shell
+python3 scripts/local_login.py --token-only
+```
+
+Integration-specific docs:
 
 - [Single-Mac OpenClaw/Hermes Guide](/Users/na/na/xcode/HunterAgent/docs/single-mac-openclaw-hermes.md)
 - [OpenClaw Integration](/Users/na/na/xcode/HunterAgent/integrations/openclaw/README.md)
 - [Hermes Integration](/Users/na/na/xcode/HunterAgent/integrations/hermes/README.md)
 
-## Local run
+## Demo Credentials
 
-### API
-
-```bash
-PYTHONPATH=apps/api uvicorn app.main:app --reload
-```
-
-### Tests
-
-```bash
-pytest apps/api/tests
-```
-
-### Web
-
-Install dependencies when network access is available:
-
-```bash
-cd apps/web
-npm install
-npm run dev
-```
-
-## Demo credentials
-
-When `ENABLE_DEMO_SEED=true`, the API seeds two demo users on startup:
+When `ENABLE_DEMO_SEED=true`, local startup seeds:
 
 - `owner@huntflow.local` / `hunter-owner`
 - `consultant@huntflow.local` / `hunter-consultant`
 
-The web workbench now uses the server session cookie rather than storing bearer tokens in the browser.
+For OpenClaw or Hermes, start with the owner account unless you explicitly want consultant-scope behavior.
 
-## Experimental sourcing release lane
+## What This Repo Includes
 
-The public release lane is a controlled manual import flow:
+- `apps/api`: FastAPI backend
+- `apps/web`: optional Next.js workbench
+- `openapi/openapi.yaml`: API contract
+- `docs/prd-v5.md`: product scope
+- `docs/adr-001.md`: architecture decisions
+- `scripts/`: local lifecycle, auth, bridge, migration, and backup helpers
 
-- create a `structured-import` source run
-- review buffered raw items
-- approve or reject each item
-- promote approved items into candidates and pipelines
+## Main Local API Surface
 
-Prototype browser-capture aliases remain hidden from the public adapter list and are not part of the release contract.
+Health:
 
-## Postgres release helpers
-
-Apply migrations:
-
-```bash
-python scripts/postgres_migrate.py
+```text
+GET /health
 ```
 
-Backup:
+Agent endpoint:
 
-```bash
-scripts/backup.sh storage/backups/latest.json
+```text
+POST /api/v1/agent/chat
 ```
 
-Restore:
+Primary local commands supported through the shared runtime:
+
+- `/today`
+- `/score <job_id> <candidate_id>`
+- `/draft <job_id> <candidate_id>`
+- `/screen <job_id> <candidate_id>` for owner/admin
+- `/assess <job_id> <candidate_id>` for owner/admin
+- `/interview <job_id> <candidate_id> <interviewer>` for owner/admin
+- `/invoice <client_id> <amount> [job_id]` for owner/admin
+
+## Troubleshooting
+
+If startup fails:
+
+1. Read [tmp/local-api.log](/Users/na/na/xcode/HunterAgent/tmp/local-api.log)
+2. Confirm `.env.local-mac` exists
+3. Confirm `python3` and `npm` are installed
+4. Re-run `npm run local:setup`
+5. Keep the install in `file + memory` mode unless you intentionally need something heavier
+
+If the agent can run shell commands but not HTTP directly, use the bridge CLI and let it talk to the API for you.
+
+If you are an agent and need the shortest possible instruction set, use this:
 
 ```bash
-scripts/restore.sh storage/backups/latest.json
+cd /Users/na/na/xcode/HunterAgent
+npm run local:setup
+cp .env.local-mac.example .env.local-mac
+npm run local:start:api
+python3 scripts/local_login.py --shell
+python3 scripts/huntflow_local_cli.py health
+python3 scripts/huntflow_local_cli.py today
 ```
