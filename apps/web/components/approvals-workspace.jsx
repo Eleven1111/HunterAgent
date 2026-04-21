@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { dashboardSummaryRequest, decideApprovalRequest } from "@/lib/client-api";
+import { decideApprovalRequest, listApprovalsRequest } from "@/lib/client-api";
 import { readStoredSession } from "@/lib/session";
 import { DenseTable } from "@/components/dense-table";
 import { Panel } from "@/components/panel";
@@ -19,8 +19,8 @@ export function ApprovalsWorkspace() {
     if (!stored.token) {
       return;
     }
-    const dashboard = await dashboardSummaryRequest(stored.token);
-    setApprovals(dashboard.approvals || []);
+    const approvalRows = await listApprovalsRequest(stored.token);
+    setApprovals(approvalRows || []);
   }
 
   useEffect(() => {
@@ -38,7 +38,8 @@ export function ApprovalsWorkspace() {
         decision,
         reason: decision === "APPROVED" ? "Approved in workbench" : "Rejected in workbench"
       });
-      setMessage(`Approval ${response.id} marked ${response.status}.`);
+      const tokenCopy = decision === "APPROVED" ? ` Token: ${response.token}` : "";
+      setMessage(`Approval ${response.id} marked ${response.status}.${tokenCopy}`);
       await refresh();
     } catch (error) {
       setMessage(error.message);
@@ -53,6 +54,7 @@ export function ApprovalsWorkspace() {
         columns={[
           { key: "action", label: "Action" },
           { key: "resource_id", label: "Resource" },
+          { key: "token", label: "Token" },
           { key: "requested_by", label: "Requester" },
           { key: "status", label: "Status" }
         ]}
@@ -66,6 +68,7 @@ export function ApprovalsWorkspace() {
               <div className="row-title">{approval.action}</div>
             </div>
             <div className="tiny">{approval.resource_id}</div>
+            <div className="tiny">{approval.status === "APPROVED" ? approval.token : "-"}</div>
             <div>
               <span className={`pill ${approval.status === "APPROVED" ? "accent" : approval.status === "REJECTED" ? "danger" : "warn"}`}>
                 {approval.status}
@@ -96,4 +99,3 @@ export function ApprovalsWorkspace() {
     </Panel>
   );
 }
-

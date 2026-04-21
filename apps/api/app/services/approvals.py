@@ -5,6 +5,7 @@ from datetime import timezone, datetime
 from fastapi import HTTPException, status
 
 from app.domain.models import Approval
+from app.domain.models import Submission
 from app.repositories.gateway import StoreGateway
 from app.repositories.store import InMemoryStore
 
@@ -61,10 +62,39 @@ def decide_approval(
     approval.reason = reason
     if decision == "APPROVED":
         approval.status = "APPROVED"
-        if approval.resource_type == "submission":
-            submission = gateway.get("submissions", approval.resource_id)
-            submission.status = "SUBMITTED"
-            submission.updated_at = datetime.now(timezone.utc)
     else:
         approval.status = "REJECTED"
     return approval
+
+
+def submit_submission_with_token(
+    store: InMemoryStore,
+    *,
+    tenant_id: str,
+    submission_id: str,
+    approval_token: str,
+) -> tuple[Submission, Approval]:
+    gateway = StoreGateway(store)
+    submission = gateway.get_for_tenant("submissions", submission_id, tenant_id)
+    if not submission:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
+    if submission.status != "DRAFT":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Submission is not in DRAFT state")
+    if not approval_token.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Approval token is required")
+    approval = gateway.find_one(
+        "approvals",
+        lambda item: item.tenant_id == tenant_id
+        and item.resource_type == "submission"
+        and item.resource_id == submission_id
+        and item.status == "APPROVED"
+        and item.token == approval_token,
+    )
+    if not approval:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Approval token is invalid")
+    if approval.token_expires_at < datetime.now(timezone.utc):
+        approval.status = "EXPIRED"
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Approval token expired")
+    submission.status = "SUBMITTED"
+    submission.updated_at = datetime.now(timezone.utc)
+    return submission, approval

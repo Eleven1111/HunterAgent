@@ -125,3 +125,17 @@ The first shippable slice is the auditable mainline loop:
 - Replay shows run metadata, steps, and related audit events.
 - Raw source items cannot be promoted before review approval.
 - The app still works when experimental sourcing is disabled.
+
+## Template-level documentation deliverables
+
+To keep implementation and governance aligned, the template-level document set is part of the release contract:
+
+- `docs/events.md` defines canonical event naming across mainline, experimental sourcing, approvals, audit, and Phase 6.
+- `docs/er-core.md` defines core entity relationships and key fields across truth-path and buffered lanes.
+- `docs/user-manual.md` defines the operator-facing loop for mainline, approval, audit, experimental sourcing, and Phase 6.
+- `docs/ops-sop.md` defines single-machine and production runbooks, backup/restore, release checks, and rollback.
+
+## Gate contract alignment
+
+- Phase 0 gate includes the baseline artifact set: PRD, ADR, OpenAPI, ER core, and event catalog.
+- Phase 6 gate includes operational hardening evidence: auditable replay, backup/restore procedure, and documented rollback path.

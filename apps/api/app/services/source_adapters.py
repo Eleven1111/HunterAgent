@@ -174,8 +174,18 @@ class SourceAdapterRegistry:
             if adapter.spec.public
         ]
 
-    def collect(self, *, source_name: str, job_order_id: str, items: list[dict], source_config: dict) -> list[dict]:
-        adapter = self._adapters.get(source_name)
+    def normalize_public_source_name(self, source_name: str) -> str:
+        normalized_name = source_name.strip()
+        adapter = self._adapters.get(normalized_name)
         if not adapter:
             raise ValueError(f"Unknown source adapter: {source_name}")
+        if not adapter.spec.public:
+            raise ValueError(
+                f"Source adapter '{normalized_name}' is retired from the public experimental contract; use 'structured-import'"
+            )
+        return adapter.spec.name
+
+    def collect(self, *, source_name: str, job_order_id: str, items: list[dict], source_config: dict) -> list[dict]:
+        canonical_name = self.normalize_public_source_name(source_name)
+        adapter = self._canonical_adapters[canonical_name]
         return adapter.collect(job_order_id=job_order_id, items=items, source_config=source_config)

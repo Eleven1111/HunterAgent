@@ -54,12 +54,17 @@ def create_run(
     settings: Settings = Depends(get_settings),
 ) -> dict:
     _require_feature(settings)
+    adapter_registry = SourceAdapterRegistry(gateway.store)
+    try:
+        source_name = adapter_registry.normalize_public_source_name(payload.source_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     run, items = create_source_run(
         gateway.store,
         tenant_id=actor.tenant_id,
         created_by=actor.user_id,
         job_order_id=payload.job_order_id,
-        source_name=payload.source_name,
+        source_name=source_name,
         items=[item.model_dump(exclude_none=True) for item in payload.items],
         source_config=payload.source_config.model_dump(exclude_none=True),
     )
@@ -70,7 +75,7 @@ def create_run(
         event_type="SOURCE_RUN_CAPTURED",
         resource_type="source_run",
         resource_id=run.id,
-        metadata={"item_count": len(items), "source_name": payload.source_name},
+        metadata={"item_count": len(items), "source_name": source_name},
     )
     return {
         "run": run.model_dump(mode="json"),

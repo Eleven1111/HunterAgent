@@ -177,9 +177,41 @@ paths:
       responses:
         "200":
           description: Submission detail
+  /api/v1/submissions/{submission_id}/submit:
+    post:
+      summary: Submit an approved draft using an approval token
+      description: |
+        Final formal submission step.
+        Flow is strict: request approval -> approve -> submit with `approval_token`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: submission_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        description: Submit the approved draft with the approval token returned by the approval flow.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmissionSubmitRequest"
+      responses:
+        "200":
+          description: Submission submitted
+        "400":
+          description: Approval token is required
+        "403":
+          description: Approval token is invalid
+        "404":
+          description: Submission not found
+        "409":
+          description: Submission is not in DRAFT state
   /api/v1/approvals:
     post:
-      summary: Request approval for a write action
+      summary: Request approval for a write action (does not execute the action)
       security:
         - bearerAuth: []
       requestBody:
@@ -200,7 +232,8 @@ paths:
           description: Approval list
   /api/v1/approvals/{approval_id}:
     patch:
-      summary: Approve or reject an approval request
+      summary: Approve or reject an approval request and mint an execution token
+      description: Approval decisions do not perform formal submit directly.
       security:
         - bearerAuth: []
       parameters:
@@ -266,7 +299,8 @@ paths:
           description: Event stream
   /api/v1/source-adapters:
     get:
-      summary: List public controlled source adapters
+      summary: List public controlled source adapters (structured-import only)
+      description: Browser prototype capture aliases are intentionally excluded from the public experimental contract.
       security:
         - bearerAuth: []
       responses:
@@ -274,7 +308,7 @@ paths:
           description: Source adapter list
   /api/v1/source-runs:
     post:
-      summary: Create a buffered controlled sourcing run
+      summary: Create a buffered controlled sourcing run from structured-import
       security:
         - bearerAuth: []
       requestBody:
@@ -581,6 +615,15 @@ components:
           type: string
         include_gap_analysis:
           type: boolean
+    SubmissionSubmitRequest:
+      type: object
+      required: [approval_token]
+      description: Approval-gated submit payload.
+      properties:
+        approval_token:
+          type: string
+          minLength: 1
+          description: Token from an APPROVED submission approval decision.
     ApprovalRequest:
       type: object
       required: [action, resource_type, resource_id]
@@ -613,11 +656,14 @@ components:
     SourceRunRequest:
       type: object
       required: [job_order_id, source_name]
+      description: Public experimental lane only supports structured-import review/promotion flow.
       properties:
         job_order_id:
           type: string
         source_name:
           type: string
+          enum: [structured-import]
+          description: Public experimental contract only accepts structured-import.
         items:
           type: array
           items:

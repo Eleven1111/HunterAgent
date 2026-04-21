@@ -119,6 +119,7 @@ def test_mainline_flow(client, login) -> None:
     )
     assert decision_resp.status_code == 200
     assert decision_resp.json()["status"] == "APPROVED"
+    approval_token = decision_resp.json()["token"]
     approval_events = client.app.state.runtime_state.list_approval_events()
     assert approval_events[-2]["event_type"] == "APPROVAL_REQUESTED"
     assert approval_events[-1]["event_type"] == "APPROVAL_DECIDED"
@@ -128,7 +129,33 @@ def test_mainline_flow(client, login) -> None:
         headers=_auth_headers(consultant),
     )
     assert submission_detail.status_code == 200
-    assert submission_detail.json()["status"] == "SUBMITTED"
+    assert submission_detail.json()["status"] == "DRAFT"
+
+    missing_token_submit_resp = client.post(
+        f"/api/v1/submissions/{submission_id}/submit",
+        json={"approval_token": ""},
+        headers=_auth_headers(consultant),
+    )
+    assert missing_token_submit_resp.status_code == 400
+    assert missing_token_submit_resp.json()["detail"] == "Approval token is required"
+
+    invalid_token_submit_resp = client.post(
+        f"/api/v1/submissions/{submission_id}/submit",
+        json={"approval_token": "token_bad"},
+        headers=_auth_headers(consultant),
+    )
+    assert invalid_token_submit_resp.status_code == 403
+    assert invalid_token_submit_resp.json()["detail"] == "Approval token is invalid"
+
+    submit_resp = client.post(
+        f"/api/v1/submissions/{submission_id}/submit",
+        json={"approval_token": approval_token},
+        headers=_auth_headers(consultant),
+    )
+    assert submit_resp.status_code == 200
+    assert submit_resp.json()["status"] == "SUBMITTED"
+    approval_events = client.app.state.runtime_state.list_approval_events()
+    assert approval_events[-1]["event_type"] == "APPROVAL_EXECUTED"
 
     replay_resp = client.get(
         f"/api/v1/runs/{draft_payload['run_id']}/replay",
@@ -137,6 +164,13 @@ def test_mainline_flow(client, login) -> None:
     assert replay_resp.status_code == 200
     replay = replay_resp.json()
     assert replay["run"]["selected_skills"] == ["submission_draft_create"]
+
+    owner_audits = client.get("/api/v1/audit-logs", headers=_auth_headers(owner))
+    assert owner_audits.status_code == 200
+    owner_audit_event_types = [event["event_type"] for event in owner_audits.json()]
+    assert "APPROVAL_REQUESTED" in owner_audit_event_types
+    assert "APPROVAL_DECIDED" in owner_audit_event_types
+    assert "SUBMISSION_SUBMITTED" in owner_audit_event_types
 
     dashboard_resp = client.get("/api/v1/dashboard/summary", headers=_auth_headers(consultant))
     assert dashboard_resp.status_code == 200

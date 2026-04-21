@@ -10,6 +10,7 @@ class SkillContext:
     team_id: str
     role: str
     channel: str
+    params: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -23,4 +24,3 @@ class SkillResult:
     run_id: str | None = None
     render_type: str | None = None
     tags: list[str] = field(default_factory=list)
-

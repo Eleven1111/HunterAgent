@@ -106,6 +106,18 @@ Primary agent endpoint:
 POST /api/v1/agent/chat
 ```
 
+Formal submission flow (token-gated):
+
+```text
+POST /api/v1/approvals
+PATCH /api/v1/approvals/{approval_id}
+POST /api/v1/submissions/{submission_id}/submit
+```
+
+Workbench flow is fixed to:
+`request approval -> approve -> submit with approval_token`.
+Approving an approval request does not directly complete formal submit.
+
 Example request:
 
 ```bash
@@ -127,6 +139,8 @@ python3 scripts/huntflow_local_cli.py score job_x candidate_y
 python3 scripts/huntflow_local_cli.py draft job_x candidate_y
 ```
 
+Bridge CLI is already covered by automated tests; keep integrations on the stable API/CLI surface above.
+
 Integration-specific guides:
 
 - [OpenClaw Integration](/Users/na/na/xcode/HunterAgent/integrations/openclaw/README.md)
@@ -145,5 +159,6 @@ Main work commands currently supported by the local agent surface:
 ## Notes for old Macs
 
 - Start with API-only mode unless you actually need the web UI.
-- Keep `ENABLE_EXPERIMENTAL_SOURCING=false` unless you are actively using the buffered import lane.
+- Keep `ENABLE_EXPERIMENTAL_SOURCING=false` unless you are actively using the structured-import review lane.
+- Public experimental contract is `structured-import -> review -> promote`.
 - `file + memory` is the lightest supported mode and avoids needing Postgres or Redis.

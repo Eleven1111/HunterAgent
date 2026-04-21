@@ -91,6 +91,7 @@ Key defaults:
 - `ENABLE_EXPERIMENTAL_SOURCING=false`
 - API on `127.0.0.1:8000`
 - Web on `127.0.0.1:3000`
+- Public experimental contract is `structured-import -> review -> promote` only (browser prototype capture is not a public capability).
 
 This is the intended first-run mode for old Macs.
 
@@ -135,6 +136,7 @@ npm run local:bridge
 ## OpenClaw / Hermes Integration
 
 The recommended integration surface is the local bridge CLI, not ad-hoc `curl`.
+The bridge CLI contract is covered by automated tests; keep integrations on the documented stable commands.
 
 Bridge CLI:
 
@@ -202,6 +204,21 @@ Agent endpoint:
 POST /api/v1/agent/chat
 ```
 
+Formal submission flow (token-gated):
+
+```text
+POST /api/v1/approvals
+PATCH /api/v1/approvals/{approval_id}
+POST /api/v1/submissions/{submission_id}/submit
+```
+
+Use this as a three-step workbench flow:
+`request approval -> approve -> submit with approval_token`.
+Approval decisions do not submit recommendations by themselves.
+
+Public experimental sourcing flow:
+`structured-import -> review -> promote`.
+
 Primary local commands supported through the shared runtime:
 
 - `/today`
@@ -211,6 +228,43 @@ Primary local commands supported through the shared runtime:
 - `/assess <job_id> <candidate_id>` for owner/admin
 - `/interview <job_id> <candidate_id> <interviewer>` for owner/admin
 - `/invoice <client_id> <amount> [job_id]` for owner/admin
+
+## Formal Submission Flow (Approval-Gated)
+
+Formal submission is a 3-step write flow:
+
+1. request approval
+2. approve the request
+3. submit with the returned `approval_token`
+
+Example:
+
+```bash
+TOKEN="$(python3 scripts/local_login.py --token-only)"
+SUBMISSION_ID="submission_x"
+
+# 1) request approval
+APPROVAL_ID="$(curl -s http://127.0.0.1:8000/api/v1/approvals \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"action\":\"SUBMIT_RECOMMENDATION\",\"resource_type\":\"submission\",\"resource_id\":\"$SUBMISSION_ID\"}" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"id\"])')"
+
+# 2) approve
+APPROVAL_TOKEN="$(curl -s http://127.0.0.1:8000/api/v1/approvals/$APPROVAL_ID \
+  -X PATCH \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"decision":"APPROVED","reason":"looks good"}' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"token\"])')"
+
+# 3) submit with token
+curl -s http://127.0.0.1:8000/api/v1/submissions/$SUBMISSION_ID/submit \
+  -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"approval_token\":\"$APPROVAL_TOKEN\"}"
+```
 
 ## Troubleshooting
 

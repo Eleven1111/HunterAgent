@@ -63,6 +63,10 @@ class SubmissionDraftRequest(BaseModel):
     include_gap_analysis: bool = True
 
 
+class SubmissionSubmitRequest(BaseModel):
+    approval_token: str
+
+
 class ApprovalRequestPayload(BaseModel):
     action: str
     resource_type: str

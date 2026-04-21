@@ -6,7 +6,8 @@ import {
   createSubmissionDraftRequest,
   dashboardSummaryRequest,
   listSubmissionsRequest,
-  requestApprovalRequest
+  requestApprovalRequest,
+  submitSubmissionWithTokenRequest
 } from "@/lib/client-api";
 import { readStoredSession } from "@/lib/session";
 import { DenseTable } from "@/components/dense-table";
@@ -20,6 +21,7 @@ export function SubmissionsWorkspace() {
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [submitTokenBySubmission, setSubmitTokenBySubmission] = useState({});
   const [message, setMessage] = useState("");
 
   async function refresh() {
@@ -86,6 +88,31 @@ export function SubmissionsWorkspace() {
     }
   }
 
+  async function handleFormalSubmit(submissionId) {
+    if (!session.token) {
+      return;
+    }
+    const approvalToken = (submitTokenBySubmission[submissionId] || "").trim();
+    if (!approvalToken) {
+      setMessage("Approval token is required before formal submit.");
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    try {
+      const submission = await submitSubmissionWithTokenRequest(session.token, submissionId, {
+        approval_token: approvalToken
+      });
+      setMessage(`Submission ${submission.id} moved to ${submission.status}.`);
+      setSubmitTokenBySubmission((current) => ({ ...current, [submissionId]: "" }));
+      await refresh();
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="grid">
       <div className="span-5">
@@ -117,7 +144,7 @@ export function SubmissionsWorkspace() {
       </div>
 
       <div className="span-7">
-        <Panel title="Submission lane" copy="Drafts stay here until a consultant explicitly requests approval for a formal write.">
+        <Panel title="Submission lane" copy="Three steps: request approval -> owner/team_admin approves -> submit with approval token for formal write.">
           <DenseTable
             columns={[
               { key: "id", label: "Submission" },
@@ -137,6 +164,19 @@ export function SubmissionsWorkspace() {
                 <div className="tiny">{submission.candidate_id}</div>
                 <div className="tiny">v{submission.version}</div>
                 <div>
+                  <input
+                    className="inline-input"
+                    placeholder="Approval token"
+                    value={submitTokenBySubmission[submission.id] || ""}
+                    onChange={(event) =>
+                      setSubmitTokenBySubmission((current) => ({
+                        ...current,
+                        [submission.id]: event.target.value
+                      }))
+                    }
+                    disabled={busy || submission.status !== "DRAFT"}
+                    style={{ minWidth: "220px", marginRight: "8px" }}
+                  />
                   <button
                     className="button secondary"
                     type="button"
@@ -144,6 +184,15 @@ export function SubmissionsWorkspace() {
                     onClick={() => handleApprovalRequest(submission.id)}
                   >
                     Request approval
+                  </button>
+                  <button
+                    className="button"
+                    type="button"
+                    disabled={busy || submission.status !== "DRAFT"}
+                    onClick={() => handleFormalSubmit(submission.id)}
+                    style={{ marginLeft: "8px" }}
+                  >
+                    Submit with token
                   </button>
                 </div>
               </div>

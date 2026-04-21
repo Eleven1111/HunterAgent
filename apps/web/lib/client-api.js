@@ -126,6 +126,17 @@ export async function createSubmissionDraftRequest(token, body) {
   );
 }
 
+export async function submitSubmissionWithTokenRequest(token, submissionId, body) {
+  return request(
+    `/api/v1/submissions/${submissionId}/submit`,
+    {
+      method: "POST",
+      body: JSON.stringify(body)
+    },
+    token
+  );
+}
+
 export async function requestApprovalRequest(token, body) {
   return request(
     "/api/v1/approvals",
@@ -135,6 +146,10 @@ export async function requestApprovalRequest(token, body) {
     },
     token
   );
+}
+
+export async function listApprovalsRequest(token) {
+  return request("/api/v1/approvals", {}, token);
 }
 
 export async function decideApprovalRequest(token, approvalId, body) {

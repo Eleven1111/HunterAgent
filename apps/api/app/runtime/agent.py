@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from dataclasses import replace
 import json
 from typing import AsyncIterator
 
@@ -12,9 +12,6 @@ from app.runtime.executor import SkillExecutor
 from app.runtime.registry import SkillRegistry
 from app.runtime.types import SkillContext
 from app.services.audit import record_audit, record_run
-from app.services.pilot_modules import create_assessment_report, create_interview_plan, create_invoice, create_phone_screen
-from app.services.scoring import run_match_scores
-from app.services.submissions import create_submission_draft
 
 
 class AgentRuntime:
@@ -83,17 +80,18 @@ class AgentRuntime:
                 return
             job_order_id = parts[1]
             candidate_ids = parts[2:]
-            scores = run_match_scores(
-                self.store,
-                tenant_id=actor.tenant_id,
-                job_order_id=job_order_id,
-                candidate_ids=candidate_ids,
-                primary_model=self.settings.primary_model,
+            result = self.executor.execute(
+                "candidate_score",
+                replace(
+                    ctx,
+                    params={
+                        "job_order_id": job_order_id,
+                        "candidate_ids": candidate_ids,
+                        "primary_model": self.settings.primary_model,
+                    },
+                ),
             )
-            payload = {
-                "job_order_id": job_order_id,
-                "scores": [score.model_dump(mode="json") for score in scores],
-            }
+            payload = result.data or {"job_order_id": job_order_id, "scores": []}
             run = record_run(
                 self.store,
                 tenant_id=actor.tenant_id,
@@ -115,8 +113,8 @@ class AgentRuntime:
                 run_id=run.id,
                 metadata={"candidate_count": len(candidate_ids)},
             )
-            yield self._event({"type": "text", "content": f"Scored {len(scores)} candidate(s)."})
-            yield self._event({"type": "render", "render_type": "score_result", "data": payload})
+            yield self._event({"type": "text", "content": f"Scored {len(payload.get('scores', []))} candidate(s)."})
+            yield self._event({"type": "render", "render_type": result.render_type or "score_result", "data": payload})
             yield self._event({"type": "done", "run_id": run.id})
             return
         if lower.startswith("/draft"):
@@ -126,15 +124,19 @@ class AgentRuntime:
                 yield self._event({"type": "done"})
                 return
             job_order_id, candidate_id = parts[1], parts[2]
-            submission = create_submission_draft(
-                self.store,
-                tenant_id=actor.tenant_id,
-                job_order_id=job_order_id,
-                candidate_id=candidate_id,
-                include_gap_analysis=True,
-                primary_model=self.settings.primary_model,
+            result = self.executor.execute(
+                "submission_draft_create",
+                replace(
+                    ctx,
+                    params={
+                        "job_order_id": job_order_id,
+                        "candidate_id": candidate_id,
+                        "include_gap_analysis": True,
+                        "primary_model": self.settings.primary_model,
+                    },
+                ),
             )
-            payload = submission.model_dump(mode="json")
+            payload = result.data or {}
             run = record_run(
                 self.store,
                 tenant_id=actor.tenant_id,
@@ -152,11 +154,11 @@ class AgentRuntime:
                 actor_user_id=actor.user_id,
                 event_type="SUBMISSION_DRAFTED",
                 resource_type="submission",
-                resource_id=submission.id,
+                resource_id=str(payload.get("id")),
                 run_id=run.id,
             )
-            yield self._event({"type": "text", "content": f"Drafted submission {submission.id}."})
-            yield self._event({"type": "render", "render_type": "submission", "data": payload})
+            yield self._event({"type": "text", "content": f"Drafted submission {payload.get('id')}."})
+            yield self._event({"type": "render", "render_type": result.render_type or "submission", "data": payload})
             yield self._event({"type": "done", "run_id": run.id})
             return
         if lower.startswith("/screen"):
@@ -171,17 +173,18 @@ class AgentRuntime:
                 return
             job_order_id, candidate_id = parts[1], parts[2]
             duration_minutes = int(parts[3]) if len(parts) == 4 else 30
-            scheduled_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
-            screen = create_phone_screen(
-                self.store,
-                tenant_id=actor.tenant_id,
-                owner_id=actor.user_id,
-                job_order_id=job_order_id,
-                candidate_id=candidate_id,
-                scheduled_at=scheduled_at,
-                duration_minutes=duration_minutes,
+            result = self.executor.execute(
+                "phone_screen_schedule",
+                replace(
+                    ctx,
+                    params={
+                        "job_order_id": job_order_id,
+                        "candidate_id": candidate_id,
+                        "duration_minutes": duration_minutes,
+                    },
+                ),
             )
-            payload = screen.model_dump(mode="json")
+            payload = result.data or {}
             run = record_run(
                 self.store,
                 tenant_id=actor.tenant_id,
@@ -199,12 +202,12 @@ class AgentRuntime:
                 actor_user_id=actor.user_id,
                 event_type="PHONE_SCREEN_CREATED",
                 resource_type="phone_screen",
-                resource_id=screen.id,
+                resource_id=str(payload.get("id")),
                 run_id=run.id,
                 metadata={"candidate_id": candidate_id, "job_order_id": job_order_id},
             )
-            yield self._event({"type": "text", "content": f"Scheduled phone screen {screen.id}."})
-            yield self._event({"type": "render", "render_type": "phone_screen", "data": payload})
+            yield self._event({"type": "text", "content": f"Scheduled phone screen {payload.get('id')}."})
+            yield self._event({"type": "render", "render_type": result.render_type or "phone_screen", "data": payload})
             yield self._event({"type": "done", "run_id": run.id})
             return
         if lower.startswith("/assess"):
@@ -219,16 +222,19 @@ class AgentRuntime:
                 return
             job_order_id, candidate_id = parts[1], parts[2]
             phone_screen_id = parts[3] if len(parts) == 4 else None
-            report = create_assessment_report(
-                self.store,
-                tenant_id=actor.tenant_id,
-                creator_id=actor.user_id,
-                job_order_id=job_order_id,
-                candidate_id=candidate_id,
-                phone_screen_id=phone_screen_id,
-                status_value="READY",
+            result = self.executor.execute(
+                "assessment_report_create",
+                replace(
+                    ctx,
+                    params={
+                        "job_order_id": job_order_id,
+                        "candidate_id": candidate_id,
+                        "phone_screen_id": phone_screen_id,
+                        "status_value": "READY",
+                    },
+                ),
             )
-            payload = report.model_dump(mode="json")
+            payload = result.data or {}
             run = record_run(
                 self.store,
                 tenant_id=actor.tenant_id,
@@ -246,12 +252,12 @@ class AgentRuntime:
                 actor_user_id=actor.user_id,
                 event_type="ASSESSMENT_REPORTED",
                 resource_type="assessment_report",
-                resource_id=report.id,
+                resource_id=str(payload.get("id")),
                 run_id=run.id,
                 metadata={"candidate_id": candidate_id, "job_order_id": job_order_id},
             )
-            yield self._event({"type": "text", "content": f"Created assessment report {report.id}."})
-            yield self._event({"type": "render", "render_type": "assessment_report", "data": payload})
+            yield self._event({"type": "text", "content": f"Created assessment report {payload.get('id')}."})
+            yield self._event({"type": "render", "render_type": result.render_type or "assessment_report", "data": payload})
             yield self._event({"type": "done", "run_id": run.id})
             return
         if lower.startswith("/interview"):
@@ -266,20 +272,21 @@ class AgentRuntime:
                 return
             job_order_id, candidate_id = parts[1], parts[2]
             interviewer_name = " ".join(parts[3:])
-            scheduled_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-            plan = create_interview_plan(
-                self.store,
-                tenant_id=actor.tenant_id,
-                coordinator_id=actor.user_id,
-                job_order_id=job_order_id,
-                candidate_id=candidate_id,
-                interviewer_name=interviewer_name,
-                scheduled_at=scheduled_at,
-                stage="CLIENT_INTERVIEW",
-                location="TBD",
-                notes="Planned via chat command",
+            result = self.executor.execute(
+                "interview_plan_create",
+                replace(
+                    ctx,
+                    params={
+                        "job_order_id": job_order_id,
+                        "candidate_id": candidate_id,
+                        "interviewer_name": interviewer_name,
+                        "stage": "CLIENT_INTERVIEW",
+                        "location": "TBD",
+                        "notes": "Planned via chat command",
+                    },
+                ),
             )
-            payload = plan.model_dump(mode="json")
+            payload = result.data or {}
             run = record_run(
                 self.store,
                 tenant_id=actor.tenant_id,
@@ -297,12 +304,12 @@ class AgentRuntime:
                 actor_user_id=actor.user_id,
                 event_type="INTERVIEW_PLAN_CREATED",
                 resource_type="interview_plan",
-                resource_id=plan.id,
+                resource_id=str(payload.get("id")),
                 run_id=run.id,
-                metadata={"candidate_id": candidate_id, "stage": plan.stage},
+                metadata={"candidate_id": candidate_id, "stage": payload.get("stage")},
             )
-            yield self._event({"type": "text", "content": f"Created interview plan {plan.id}."})
-            yield self._event({"type": "render", "render_type": "interview_plan", "data": payload})
+            yield self._event({"type": "text", "content": f"Created interview plan {payload.get('id')}."})
+            yield self._event({"type": "render", "render_type": result.render_type or "interview_plan", "data": payload})
             yield self._event({"type": "done", "run_id": run.id})
             return
         if lower.startswith("/invoice"):
@@ -318,19 +325,20 @@ class AgentRuntime:
             client_id = parts[1]
             amount = float(parts[2])
             job_order_id = parts[3] if len(parts) == 4 else None
-            due_date = (datetime.now(timezone.utc) + timedelta(days=14)).isoformat()
-            invoice = create_invoice(
-                self.store,
-                tenant_id=actor.tenant_id,
-                owner_id=actor.user_id,
-                client_id=client_id,
-                amount=amount,
-                due_date=due_date,
-                job_order_id=job_order_id,
-                currency="CNY",
-                memo="Created via chat command",
+            result = self.executor.execute(
+                "invoice_create",
+                replace(
+                    ctx,
+                    params={
+                        "client_id": client_id,
+                        "amount": amount,
+                        "job_order_id": job_order_id,
+                        "currency": "CNY",
+                        "memo": "Created via chat command",
+                    },
+                ),
             )
-            payload = invoice.model_dump(mode="json")
+            payload = result.data or {}
             run = record_run(
                 self.store,
                 tenant_id=actor.tenant_id,
@@ -348,12 +356,12 @@ class AgentRuntime:
                 actor_user_id=actor.user_id,
                 event_type="INVOICE_CREATED",
                 resource_type="invoice",
-                resource_id=invoice.id,
+                resource_id=str(payload.get("id")),
                 run_id=run.id,
                 metadata={"client_id": client_id, "amount": amount},
             )
-            yield self._event({"type": "text", "content": f"Created invoice {invoice.id}."})
-            yield self._event({"type": "render", "render_type": "invoice", "data": payload})
+            yield self._event({"type": "text", "content": f"Created invoice {payload.get('id')}."})
+            yield self._event({"type": "render", "render_type": result.render_type or "invoice", "data": payload})
             yield self._event({"type": "done", "run_id": run.id})
             return
         yield self._event({"type": "text", "content": "Supported commands: /today, /score, /draft, /screen, /assess, /interview, /invoice"})

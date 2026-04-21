@@ -1,9 +1,12 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.config import Settings, get_settings
-from app.core.security import ActorContext, get_current_actor, get_gateway
+from app.core.security import ActorContext, get_current_actor, get_gateway, get_runtime_state
 from app.repositories.gateway import StoreGateway
-from app.schemas.contracts import SubmissionDraftRequest
+from app.schemas.contracts import SubmissionDraftRequest, SubmissionSubmitRequest
+from app.services.approvals import submit_submission_with_token
 from app.services.audit import record_audit, record_run
 from app.services.submissions import create_submission_draft
 
@@ -81,4 +84,43 @@ def get_submission(
     submission = gateway.get_for_tenant("submissions", submission_id, actor.tenant_id)
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found")
+    return submission.model_dump(mode="json")
+
+
+@router.post("/{submission_id}/submit")
+def submit_submission(
+    submission_id: str,
+    payload: SubmissionSubmitRequest,
+    actor: ActorContext = Depends(get_current_actor),
+    gateway: StoreGateway = Depends(get_gateway),
+    runtime_state = Depends(get_runtime_state),
+) -> dict:
+    existing_submission = gateway.get_for_tenant("submissions", submission_id, actor.tenant_id)
+    before_status = existing_submission.status if existing_submission else "UNKNOWN"
+    submission, approval = submit_submission_with_token(
+        gateway.store,
+        tenant_id=actor.tenant_id,
+        submission_id=submission_id,
+        approval_token=payload.approval_token,
+    )
+    record_audit(
+        gateway.store,
+        tenant_id=actor.tenant_id,
+        actor_user_id=actor.user_id,
+        event_type="SUBMISSION_SUBMITTED",
+        resource_type="submission",
+        resource_id=submission.id,
+        state_diff={"before": {"status": before_status}, "after": {"status": submission.status}},
+        metadata={"approval_id": approval.id},
+    )
+    runtime_state.enqueue_approval_event(
+        {
+            "event_type": "APPROVAL_EXECUTED",
+            "approval_id": approval.id,
+            "resource_type": approval.resource_type,
+            "resource_id": approval.resource_id,
+            "actor_user_id": actor.user_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
     return submission.model_dump(mode="json")

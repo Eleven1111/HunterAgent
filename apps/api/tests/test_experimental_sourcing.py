@@ -1,8 +1,27 @@
 from __future__ import annotations
 
-from app.core.config import get_settings
-from app.main import create_app
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+from app.api.routes import auth, candidates, clients, job_orders, source_runs
+from app.core.config import get_settings
+from app.repositories.factory import build_store
+from app.runtime.factory import build_runtime_state
+
+
+def _create_source_test_app() -> FastAPI:
+    get_settings.cache_clear()
+    settings = get_settings()
+    app = FastAPI()
+    store = build_store(settings)
+    app.state.store = store
+    app.state.runtime_state = build_runtime_state(settings, store)
+    app.include_router(auth.router)
+    app.include_router(clients.router)
+    app.include_router(job_orders.router)
+    app.include_router(candidates.router)
+    app.include_router(source_runs.router)
+    return app
 
 
 def _auth_headers(token: str) -> dict:
@@ -16,8 +35,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
 
 
 def _make_enabled_client() -> tuple[TestClient, str]:
-    get_settings.cache_clear()
-    app = create_app()
+    app = _create_source_test_app()
     app.state.store.reset()
     app.state.store.seed()
     client = TestClient(app)
@@ -25,8 +43,13 @@ def _make_enabled_client() -> tuple[TestClient, str]:
     return client, token
 
 
-def test_experimental_routes_are_flagged_off_by_default(client, login) -> None:
-    token = login("owner@huntflow.local", "hunter-owner")
+def test_experimental_routes_are_flagged_off_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("ENABLE_EXPERIMENTAL_SOURCING", raising=False)
+    app = _create_source_test_app()
+    app.state.store.reset()
+    app.state.store.seed()
+    client = TestClient(app)
+    token = _login(client, "owner@huntflow.local", "hunter-owner")
     response = client.get("/api/v1/source-runs", headers=_auth_headers(token))
     assert response.status_code == 403
 
@@ -48,7 +71,7 @@ def test_public_adapter_list_only_exposes_manual_lane(monkeypatch) -> None:
     ]
 
 
-def test_browser_capture_alias_still_collects_but_is_not_public(monkeypatch) -> None:
+def test_browser_capture_contract_is_retired(monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_EXPERIMENTAL_SOURCING", "true")
     client, token = _make_enabled_client()
 
@@ -75,10 +98,38 @@ def test_browser_capture_alias_still_collects_but_is_not_public(monkeypatch) -> 
         },
         headers=_auth_headers(token),
     )
+    assert source_resp.status_code == 400
+    assert source_resp.json()["detail"] == (
+        "Source adapter 'browser-prototype' is retired from the public experimental contract; use 'structured-import'"
+    )
+
+
+def test_legacy_structured_import_alias_is_canonicalized(monkeypatch) -> None:
+    monkeypatch.setenv("ENABLE_EXPERIMENTAL_SOURCING", "true")
+    client, token = _make_enabled_client()
+
+    client_resp = client.post(
+        "/api/v1/clients",
+        json={"name": "Alias Capital", "industry": "Fintech"},
+        headers=_auth_headers(token),
+    )
+    job_resp = client.post(
+        "/api/v1/job-orders",
+        json={"client_id": client_resp.json()["id"], "title": "CFO"},
+        headers=_auth_headers(token),
+    )
+    source_resp = client.post(
+        "/api/v1/source-runs",
+        json={
+            "job_order_id": job_resp.json()["id"],
+            "source_name": "experimental-browser-adapter",
+            "source_config": {"source_label": "manual normalized list"},
+            "items": [{"full_name": "Ada Sun", "resume_text": "CFO with treasury depth."}],
+        },
+        headers=_auth_headers(token),
+    )
     assert source_resp.status_code == 201
-    item = source_resp.json()["items"][0]
-    assert item["normalized_draft"]["full_name"] == "Ada Sun"
-    assert item["raw_payload"]["source_url"] == "https://example.com/prospect"
+    assert source_resp.json()["run"]["source_name"] == "structured-import"
 
 
 def test_source_runs_require_real_job_order(monkeypatch) -> None:
