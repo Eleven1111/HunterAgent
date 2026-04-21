@@ -1,0 +1,23 @@
+{
+  "name": "huntflow-vnext",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "test:api": "pytest apps/api/tests -q",
+    "dev:web": "npm --workspace apps/web run dev",
+    "build:web": "npm --workspace apps/web run build",
+    "local:setup": "bash scripts/setup_local_mac.sh",
+    "local:api": "bash scripts/start_local_api.sh",
+    "local:web": "bash scripts/start_local_web.sh",
+    "local:start": "bash scripts/start_local_stack.sh",
+    "local:start:api": "bash scripts/start_local_stack.sh --api-only",
+    "local:stop": "bash scripts/stop_local_stack.sh",
+    "local:token": "python3 scripts/local_login.py --shell",
+    "local:bridge": "python3 scripts/huntflow_local_cli.py --help",
+    "local:launchd:install": "bash scripts/install_launchd_services.sh",
+    "local:launchd:install:web": "bash scripts/install_launchd_services.sh --with-web",
+    "local:launchd:remove": "bash scripts/uninstall_launchd_services.sh"
+  }
+}

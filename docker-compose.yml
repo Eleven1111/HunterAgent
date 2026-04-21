@@ -1,0 +1,81 @@
+version: "3.9"
+
+services:
+  api:
+    image: python:3.12-slim
+    working_dir: /workspace/apps/api
+    command: >
+      sh -c "pip install --no-cache-dir -r /workspace/requirements.txt &&
+             python /workspace/scripts/postgres_migrate.py &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    env_file:
+      - .env.example
+    environment:
+      STORE_BACKEND: postgres
+      DATABASE_URL: postgresql://huntflow:huntflow@postgres:5432/huntflow
+      DATABASE_SCHEMA: huntflow
+      RUNTIME_BACKEND: redis
+      REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /workspace/apps/api
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - .:/workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  web:
+    image: node:23-bullseye
+    working_dir: /workspace/apps/web
+    command: >
+      sh -c "npm install &&
+             npm run dev -- --hostname 0.0.0.0 --port ${WEB_PORT:-3000}"
+    env_file:
+      - .env.example
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    volumes:
+      - .:/workspace
+    depends_on:
+      api:
+        condition: service_healthy
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: huntflow
+      POSTGRES_USER: huntflow
+      POSTGRES_PASSWORD: huntflow
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U huntflow -d huntflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+volumes:
+  postgres_data:
+  redis_data:

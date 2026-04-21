@@ -1,0 +1,879 @@
+openapi: 3.1.0
+info:
+  title: HuntFlow vNext API
+  version: 0.1.0
+servers:
+  - url: http://localhost:8000
+paths:
+  /health:
+    get:
+      summary: Health probe
+      responses:
+        "200":
+          description: OK
+  /api/v1/auth/login:
+    post:
+      summary: Issue a server session cookie and bearer token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Logged in
+  /api/v1/auth/me:
+    get:
+      summary: Resolve the current bearer or cookie session
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user
+  /api/v1/dashboard/summary:
+    get:
+      summary: Return an aggregated workbench payload
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Dashboard summary
+  /api/v1/clients:
+    get:
+      summary: List tenant-scoped clients
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Client list
+    post:
+      summary: Create a client
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientCreate"
+      responses:
+        "201":
+          description: Client created
+  /api/v1/clients/{client_id}/stage:
+    patch:
+      summary: Advance a client through the allowed stage flow
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: client_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stage]
+              properties:
+                stage:
+                  type: string
+      responses:
+        "200":
+          description: Client updated
+  /api/v1/job-orders:
+    get:
+      summary: List job orders
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Job list
+    post:
+      summary: Create job order
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobOrderCreate"
+      responses:
+        "201":
+          description: Job created
+  /api/v1/candidates:
+    get:
+      summary: List candidates
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Candidate list
+  /api/v1/candidates/import:
+    post:
+      summary: Import a candidate or dedupe into an existing record
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CandidateImportRequest"
+      responses:
+        "201":
+          description: Candidate imported
+  /api/v1/match-scores/run:
+    post:
+      summary: Score candidates for a job
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MatchScoreRequest"
+      responses:
+        "200":
+          description: Scoring result
+  /api/v1/submissions/draft:
+    post:
+      summary: Generate a recommendation draft
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmissionDraftRequest"
+      responses:
+        "201":
+          description: Draft created
+  /api/v1/submissions:
+    get:
+      summary: List recommendation drafts and submissions
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Submission list
+  /api/v1/submissions/{submission_id}:
+    get:
+      summary: Fetch a submission draft
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: submission_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Submission detail
+  /api/v1/approvals:
+    post:
+      summary: Request approval for a write action
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalRequest"
+      responses:
+        "201":
+          description: Approval created
+    get:
+      summary: List approvals
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Approval list
+  /api/v1/approvals/{approval_id}:
+    patch:
+      summary: Approve or reject an approval request
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: approval_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalDecisionRequest"
+      responses:
+        "200":
+          description: Approval updated
+  /api/v1/runs/{run_id}/replay:
+    get:
+      summary: Replay a run with audit events
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Replay payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplayResponse"
+  /api/v1/audit-logs:
+    get:
+      summary: List audit events
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Audit list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLog"
+  /api/v1/agent/chat:
+    post:
+      summary: Stream agent responses over SSE
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentChatRequest"
+      responses:
+        "200":
+          description: Event stream
+  /api/v1/source-adapters:
+    get:
+      summary: List public controlled source adapters
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Source adapter list
+  /api/v1/source-runs:
+    post:
+      summary: Create a buffered controlled sourcing run
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourceRunRequest"
+      responses:
+        "201":
+          description: Source run created
+    get:
+      summary: List source runs
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Source run list
+  /api/v1/source-runs/{run_id}:
+    get:
+      summary: Get a source run and its raw items
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Source run detail
+  /api/v1/source-items/{item_id}/review:
+    post:
+      summary: Review a buffered source item with a single terminal decision
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: item_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourceReviewRequest"
+      responses:
+        "200":
+          description: Review recorded
+  /api/v1/source-items/{item_id}/promote:
+    post:
+      summary: Promote an approved buffered source item into candidates and pipelines
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: item_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Item promoted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourcePromoteResponse"
+  /api/v1/phone-screens:
+    get:
+      summary: List phone screens
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Phone screen list
+    post:
+      summary: Create a phone screen
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PhoneScreenCreateRequest"
+      responses:
+        "201":
+          description: Phone screen created
+  /api/v1/phone-screens/{screen_id}:
+    patch:
+      summary: Update phone screen status and notes
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: screen_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PhoneScreenUpdateRequest"
+      responses:
+        "200":
+          description: Phone screen updated
+  /api/v1/assessment-reports:
+    get:
+      summary: List assessment reports
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Assessment report list
+    post:
+      summary: Create an assessment report
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssessmentReportCreateRequest"
+      responses:
+        "201":
+          description: Assessment report created
+  /api/v1/interview-plans:
+    get:
+      summary: List interview plans
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Interview plan list
+    post:
+      summary: Create an interview plan
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InterviewPlanCreateRequest"
+      responses:
+        "201":
+          description: Interview plan created
+  /api/v1/interview-plans/{plan_id}:
+    patch:
+      summary: Update interview plan status
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: plan_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InterviewPlanUpdateRequest"
+      responses:
+        "200":
+          description: Interview plan updated
+  /api/v1/invoices:
+    get:
+      summary: List invoice lite records
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Invoice list
+    post:
+      summary: Create an invoice lite record
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoiceCreateRequest"
+      responses:
+        "201":
+          description: Invoice created
+  /api/v1/invoices/{invoice_id}:
+    patch:
+      summary: Update invoice status
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: invoice_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoiceUpdateRequest"
+      responses:
+        "200":
+          description: Invoice updated
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: huntflow_session
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+    ClientCreate:
+      type: object
+      required: [name, industry]
+      properties:
+        name:
+          type: string
+        industry:
+          type: string
+        size:
+          type: string
+        notes:
+          type: string
+    JobOrderCreate:
+      type: object
+      required: [client_id, title]
+      properties:
+        client_id:
+          type: string
+        title:
+          type: string
+        level:
+          type: string
+        jd:
+          type: string
+        must_have:
+          type: array
+          items:
+            type: string
+        nice_to_have:
+          type: array
+          items:
+            type: string
+    CandidateImportRequest:
+      type: object
+      required: [full_name, resume_text]
+      properties:
+        job_order_id:
+          type: string
+        full_name:
+          type: string
+        current_company:
+          type: string
+        current_title:
+          type: string
+        city:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        resume_text:
+          type: string
+        source_type:
+          type: string
+    MatchScoreRequest:
+      type: object
+      required: [job_order_id, candidate_ids]
+      properties:
+        job_order_id:
+          type: string
+        candidate_ids:
+          type: array
+          items:
+            type: string
+    SubmissionDraftRequest:
+      type: object
+      required: [job_order_id, candidate_id]
+      properties:
+        job_order_id:
+          type: string
+        candidate_id:
+          type: string
+        include_gap_analysis:
+          type: boolean
+    ApprovalRequest:
+      type: object
+      required: [action, resource_type, resource_id]
+      properties:
+        action:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+        payload:
+          type: object
+    ApprovalDecisionRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [APPROVED, REJECTED]
+        reason:
+          type: string
+    AgentChatRequest:
+      type: object
+      required: [message]
+      properties:
+        session_id:
+          type: string
+        message:
+          type: string
+    SourceRunRequest:
+      type: object
+      required: [job_order_id, source_name]
+      properties:
+        job_order_id:
+          type: string
+        source_name:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceItemPayload"
+        source_config:
+          $ref: "#/components/schemas/SourceConfigPayload"
+    SourceItemPayload:
+      type: object
+      properties:
+        full_name:
+          type: string
+        current_company:
+          type: string
+        current_title:
+          type: string
+        city:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        resume_text:
+          type: string
+        summary:
+          type: string
+        source_url:
+          type: string
+        capture_notes:
+          type: string
+    SourceConfigPayload:
+      type: object
+      properties:
+        source_url:
+          type: string
+        source_label:
+          type: string
+        capture_notes:
+          type: string
+        candidate_name:
+          type: string
+        current_company:
+          type: string
+        current_title:
+          type: string
+        city:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        resume_text:
+          type: string
+        captured_at:
+          type: string
+    SourceReviewRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [APPROVED, REJECTED]
+        note:
+          type: string
+    PhoneScreenCreateRequest:
+      type: object
+      required: [job_order_id, candidate_id, scheduled_at]
+      properties:
+        job_order_id:
+          type: string
+        candidate_id:
+          type: string
+        scheduled_at:
+          type: string
+        duration_minutes:
+          type: integer
+    PhoneScreenUpdateRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+        call_summary:
+          type: string
+        recommendation:
+          type: string
+    AssessmentReportCreateRequest:
+      type: object
+      required: [job_order_id, candidate_id]
+      properties:
+        job_order_id:
+          type: string
+        candidate_id:
+          type: string
+        phone_screen_id:
+          type: string
+          nullable: true
+        status:
+          type: string
+    InterviewPlanCreateRequest:
+      type: object
+      required: [job_order_id, candidate_id, interviewer_name, scheduled_at]
+      properties:
+        job_order_id:
+          type: string
+        candidate_id:
+          type: string
+        interviewer_name:
+          type: string
+        scheduled_at:
+          type: string
+        stage:
+          type: string
+        location:
+          type: string
+        notes:
+          type: string
+    InterviewPlanUpdateRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+        notes:
+          type: string
+    InvoiceCreateRequest:
+      type: object
+      required: [client_id, amount, due_date]
+      properties:
+        client_id:
+          type: string
+        amount:
+          type: number
+        due_date:
+          type: string
+        job_order_id:
+          type: string
+          nullable: true
+        currency:
+          type: string
+        memo:
+          type: string
+    InvoiceUpdateRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+        memo:
+          type: string
+    CandidateSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        full_name:
+          type: string
+        current_company:
+          type: string
+        current_title:
+          type: string
+        city:
+          type: string
+        source_type:
+          type: string
+        email_masked:
+          type: string
+          nullable: true
+        phone_masked:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+        run_id:
+          type: string
+          nullable: true
+        event_type:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+        actor_user_id:
+          type: string
+        state_diff:
+          type: object
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+    AgentRunStep:
+      type: object
+      properties:
+        step_id:
+          type: string
+        kind:
+          type: string
+        summary:
+          type: string
+        status:
+          type: string
+        output:
+          type: object
+    AgentRun:
+      type: object
+      properties:
+        id:
+          type: string
+        channel:
+          type: string
+        goal:
+          type: string
+        status:
+          type: string
+        selected_skills:
+          type: array
+          items:
+            type: string
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentRunStep"
+        model_name:
+          type: string
+          nullable: true
+        model_version:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+    ReplayResponse:
+      type: object
+      properties:
+        run:
+          $ref: "#/components/schemas/AgentRun"
+        audit_events:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLog"
+    SourcePromoteResponse:
+      type: object
+      properties:
+        candidate:
+          $ref: "#/components/schemas/CandidateSummary"
+        pipeline_id:
+          type: string
+          nullable: true
+        source_item_id:
+          type: string
